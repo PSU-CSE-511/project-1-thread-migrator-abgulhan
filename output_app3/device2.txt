@@ -1,0 +1,14 @@
+machine 2
+Bar: Value of A = 4
+machine 2
+Bar: Value of A = 5
+machine 2
+Bar: Exit Value of A = 5
+machine 2
+Bar: Exit Value of A = 4
+machine 2
+Bar: Exit Value of A = 3
+machine 2
+Bar: Exit Value of A = 2
+machine 2
+Bar: Exit Value of A = 1

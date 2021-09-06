@@ -1,0 +1,2 @@
+machine 1
+Foo: Value of A = 10

@@ -1,0 +1,6 @@
+machine 1
+Bar: Value of A = 1
+machine 1
+Bar: Value of A = 2
+machine 1
+Bar: Value of A = 3
