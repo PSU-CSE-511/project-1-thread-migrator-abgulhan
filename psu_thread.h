@@ -5,27 +5,37 @@
 #include <ucontext.h>
 #include <pthread.h>
 
-//you write the code here
+#define PORT 8080
 
 //typedef struct psu_thread_info psu_thread_info_t;
 
-void psu_thread_setup_init(int mode)
+void psu_thread_setup_init(int server_mode)
 {
-	//Read from a file to set up the socket connection between the client and the server
-
+	if (server_mode) {
+		// start a server
+		// listen for connections
+		// receive connection
+		// receive the context from the client
+		// close the server
+		// switch to the new context
+	}
 	return;
 }
 
 int psu_thread_create(void * (*user_func)(void*), void *user_args)
 {
-	// make thread related setup
-	// create thread and start running the function based on *user_func
-	
+	// start a pthread
 	return 0; 
 }
 
 void psu_thread_migrate(const char *hostname)
 {
-	//thread Migration related code
+	// save the context: c1
+	// if I am a client
+		// want to migrate to remote host now
+		// start a client right here
+		// try to connect. if failure, return failure msg
+		// if success, then exit this thread
+	// else, I am a server. simply continue
 	return;
 }
