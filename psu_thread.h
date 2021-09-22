@@ -22,7 +22,11 @@ ucontext_t uctx;
 
 int server_mode;
 
+void print_context(ucontext_t *ptr){
+    printf("Contents of context struct:\n uc_sigmask: %lu \n uc_stack: %lu, uc_mcontext: %lu \n", ptr->uc_sigmask, ptr->uc_stack, ptr->uc_mcontext);
 
+    //printf("Contents of uc_mcontext\n mc_gregs: %lu\n mc_fp %lu\n mc_i7 %lu\n mc_fpu_t %lu\n", ptr->uc_mcontext.mc_gregs, ptr->uc_mcontext.mc_fp, ptr->uc_mcontext.mc_i7, ptr->uc_mcontext.mc_fpu_t);
+}
 
 // receive the context from client
 void server()
@@ -67,7 +71,11 @@ void server()
 
 	// receive the context from the client
 	// TODO: maybe not this structure exactly??
+    printf("\nuctx before server read:\n");
+    print_context(&uctx);
 	n = read(newsockfd, &uctx, sizeof(uctx));
+    printf("\nuctx after server read:\n");
+    print_context(&uctx);
 	if (n < 0) error("ERROR reading from socket");
 
 	// simple check if got the same value as sender
@@ -76,10 +84,11 @@ void server()
 	// write to the client
 	n = write(newsockfd,"I got your message, I'll start your thread!", 43);
 	if (n < 0) error("ERROR writing to socket");
-
+    printf("closing server\n");
 	// close the server
 	close(newsockfd);
 	close(sockfd);
+    printf("server closed\n");
 }
 
 
@@ -140,14 +149,30 @@ void psu_thread_setup_init(int mode)
 {
 	server_mode = mode;
 	if (server_mode) {
+        printf("I am a server\n");
 		server();
 		// switch to the new context: uctx
+        printf("\nuctx:\n");
+        print_context(&uctx);
+
+        ucontext_t temp;
+        getcontext(&temp);
+        printf("\ntemp:\n");
+        print_context(&temp);
+        
+        printf("\nuctx modified:\n");
+        uctx.uc_stack = temp.uc_stack;
+        print_context(&uctx);
+
+        printf("setting context\n");
 		setcontext(&uctx);
+        printf("context set??\n");
 		// TODO: how?? this does not  make sense in my machine!
 		// this will crash!
 	} else {
 		// This is a machine where the thread starts first
 		// TODO: do any initializations here?? not sure...
+        printf("I am a client\n");
 		
 	}
 	return;
@@ -164,13 +189,19 @@ void psu_thread_migrate(const char *hostname)
 {
 	ucontext_t uctx_local;
 	const int retval = 0;
+    printf("entered migrate\n");
 	getcontext(&uctx);
-	getcontext(&uctx_local);
+	//getcontext(&uctx_local); //same as uctx   
+    printf("uctx:\n");     
+    print_context(&uctx);
+    //printf("uctx_local\n");
+    //print_context(&uctx_local);
 
 	if (!server_mode) {
 		// start a client right here. 
 		// using this, send the context
-		client(hostname);
+        printf("migration starting\n");
+		client(hostname); //sending uctx insinde of this function
 
 		// if success, then exit this thread
 		pthread_exit(&retval);
