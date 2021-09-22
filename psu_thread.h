@@ -71,7 +71,7 @@ void server()
 	if (n < 0) error("ERROR reading from socket");
 
 	// simple check if got the same value as sender
-	printf("%d\n", uctx.uc_stack.ss_sp);
+	//printf("%d\n", uctx.uc_stack.ss_sp);
 
 	// write to the client
 	n = write(newsockfd,"I got your message, I'll start your thread!", 43);
@@ -115,7 +115,7 @@ void client(const char * hostname)
 	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
 		error("ERROR connecting");
 
-	printf("%d\n", uctx.uc_stack.ss_sp);
+	//printf("%d\n", *((int *)(uctx.uc_stack.ss_sp+16)));
 
 	// write the context to server
 	// TODO: something else to be written here?
@@ -142,7 +142,9 @@ void psu_thread_setup_init(int mode)
 	if (server_mode) {
 		server();
 		// switch to the new context: uctx
+		setcontext(&uctx);
 		// TODO: how?? this does not  make sense in my machine!
+		// this will crash!
 	} else {
 		// This is a machine where the thread starts first
 		// TODO: do any initializations here?? not sure...
@@ -160,8 +162,10 @@ int psu_thread_create(void * (*user_func)(void*), void *user_args)
 
 void psu_thread_migrate(const char *hostname)
 {
+	ucontext_t uctx_local;
 	const int retval = 0;
 	getcontext(&uctx);
+	getcontext(&uctx_local);
 
 	if (!server_mode) {
 		// start a client right here. 
