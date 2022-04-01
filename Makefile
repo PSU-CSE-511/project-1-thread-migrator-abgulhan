@@ -1,4 +1,4 @@
-CFLAGS = -std=gnu99 -w
+CFLAGS = -std=gnu99 -w -m32
 LIBS = -lpthread -pthread
 SOURCES1 = app1.c
 SOURCES2 = app2.c

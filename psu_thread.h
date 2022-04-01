@@ -17,22 +17,30 @@
 
 #define STACK_WIDTH 4
 
-#define PORT 8081
+#define PORT 8080
 
 #define NUM_BLANK_ENTRIES 1400
-#define SIZE_OF_STACK 1500
-#define NUM_FRAMES 3
+#define SIZE_OF_STACK 2000
+#define MAX_RECURSION_DEPTH 20
+#define MAX_ARGS 20
+
+//
+// for app3. hold base pointer pthread_create
+//
+uint32_t base_pointer_create;
+//
 
 typedef struct psu_thread_info {
 	
 	ucontext_t uctx;
 	uint32_t stack_raw_data[SIZE_OF_STACK];
-	uint32_t args[100];
+	//uint32_t args[100];
 	uint32_t restart_point;
 	int num_elements;
 	int restart_point_offset;
 	int num_blank_entries;
-    int frame_index[NUM_FRAMES];
+	int base_pointer_positions[MAX_RECURSION_DEPTH];
+	int num_frames;
 	
 } psu_thread_info_t;
 
@@ -83,7 +91,7 @@ void server()
 		error("ERROR on binding");
 
 	// listen for connections
-	printf("Listening for connections.\n");
+	// printf("Listening for connections.\n");
 	listen(sockfd,5);
 	clilen = sizeof(cli_addr);
 
@@ -106,7 +114,8 @@ void server()
 		bytes_to_read -= n;
 	}
 	if (bytes_to_read == 0) {
-		printf("Have received all the bytes!\n");
+		//printf("Have received all the bytes!\n");
+		;
 	}
 
 	// write to the client
@@ -114,42 +123,34 @@ void server()
 	n = write(newsockfd,"I got your message, I'll start your thread!", 43);
 	if (n < 0) error("ERROR writing to socket");
 	
-	printf("I received: num_blank_entries: %d\n", psuthreadinfo.num_blank_entries);
-	printf("EAX: %zx\n", psuthreadinfo.uctx.uc_mcontext.gregs[EAX]);
+	//printf("I received: num_blank_entries: %d\n", psuthreadinfo.num_blank_entries);
+	//printf("EAX: %zx\n", psuthreadinfo.uctx.uc_mcontext.gregs[EAX]);
     
-	printf("closing server\n");
+	//printf("closing server\n");
 	// close the server
 	close(newsockfd);
 	close(sockfd);
-    printf("server closed\n");
+    //printf("server closed\n");
 	
 	
 	ucontext_t uctx_local;
-	
     getcontext(&uctx_local);
-
 	uint32_t *ebp = uctx_local.uc_mcontext.gregs[EBP];
     uint32_t *ebp_last_frame = *ebp;
     uint32_t  ret_addr = *(ebp+1);
 	uint32_t restart_addr = psuthreadinfo.restart_point_offset + fn_start_addr;
 	
-	psuthreadinfo.uctx.uc_mcontext.gregs[ESP] = &psuthreadinfo.stack_raw_data[psuthreadinfo.frame_index[psuthreadinfo.num_blank_entries]];
+	int i;
+	for (i = 0; i < psuthreadinfo.num_frames-1; i++) {
+		psuthreadinfo.stack_raw_data[psuthreadinfo.base_pointer_positions[i]] = &psuthreadinfo.stack_raw_data[psuthreadinfo.base_pointer_positions[i+1]];
+	}
+	psuthreadinfo.stack_raw_data[psuthreadinfo.base_pointer_positions[psuthreadinfo.num_frames-1]] = ebp_last_frame;
+	psuthreadinfo.stack_raw_data[psuthreadinfo.base_pointer_positions[psuthreadinfo.num_frames-1]+1] = ret_addr;
 	
-    psuthreadinfo.uctx.uc_mcontext.gregs[EBP] = &psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries + psuthreadinfo.num_elements];
-    for(int k = NUM_FRAMES-1; k>=0; k--){//link ebps together 
-        //psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries + psuthreadinfo.num_elements] = ebp_last_frame;//
-        psuthreadinfo.stack_raw_data[psuthreadinfo.frame_index[k]] = ebp_last_frame;//
-        if (k != -1){ //gives segfault on last iteration
-            printf("%d",k-1);
-        
-            ebp_last_frame = psuthreadinfo.frame_index[k-1];
-        }
-    }
-
-    //psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries+psuthreadinfo.num_elements+1] = ret_addr;
-    psuthreadinfo.stack_raw_data[psuthreadinfo.frame_index[NUM_FRAMES-1] + 1] = ret_addr;
+	psuthreadinfo.uctx.uc_mcontext.gregs[ESP] = &psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries];
+    psuthreadinfo.uctx.uc_mcontext.gregs[EBP] = &psuthreadinfo.stack_raw_data[psuthreadinfo.base_pointer_positions[0]];
     psuthreadinfo.uctx.uc_mcontext.gregs[EIP] = restart_addr;
-	printf("setting context\n");
+	
 	setcontext(&psuthreadinfo.uctx);
 	
 	
@@ -201,7 +202,8 @@ void client(const char * hostname)
 		bytes_to_send -= n;
 	}
 	if (bytes_to_send == 0) {
-		printf("Sent all the bytes!\n");
+		//printf("Sent all the bytes!\n");
+		;
 	}
 	
 	bzero(buffer, 256);
@@ -210,7 +212,7 @@ void client(const char * hostname)
 	n = read(sockfd, buffer, 255);
 	if (n < 0) 
 		error("ERROR reading from socket");
-	printf("%s\n",buffer);
+	//printf("%s\n",buffer);
 	
 	// close the socket
 	close(sockfd);
@@ -229,13 +231,11 @@ void psu_thread_setup_init(int mode)
 
 
 void * server_wrapper(void * arg) {
+	
 	server();
-	int ret = 0;
-	int x = 10;
-	x++;
-	int y = x;
-	y++;
-	pthread_exit(&ret);
+	
+	int i = 0;
+	pthread_exit(&i);
 	return NULL;
 }
 
@@ -245,6 +245,10 @@ int psu_thread_create(void * (*user_func)(void*), void *user_args)
 	fn_start_addr = user_func;
 	int iret;
 	
+	ucontext_t uctx_local;
+	getcontext(&uctx_local);
+	base_pointer_create = psuthreadinfo.uctx.uc_mcontext.gregs[EBP];
+    
 	if (server_mode){
 		iret = pthread_create( &thread_id, NULL, server_wrapper, user_args);
 		pthread_join (thread_id, NULL);
@@ -261,69 +265,57 @@ void psu_thread_migrate(const char *hostname)
 {
 	int i;
 	const int retval = 0;
-    printf("entered migrate\n");
-    if (server_mode){
-        printf("I am a server\n--------\n");
-        //pthread_exit(&retval);
-        return;
-    }
-
+    //printf("entered migrate\n");
 	getcontext(&(psuthreadinfo.uctx));
 	
-    uint32_t *ebp = psuthreadinfo.uctx.uc_mcontext.gregs[EBP];
+	uint32_t *ebp = psuthreadinfo.uctx.uc_mcontext.gregs[EBP];
     uint32_t *ebp_last_frame = *ebp;
-    //printf("\nebp %lu\n", ebp);
-    //printf("*ebp %lu\n", *ebp);
     uint32_t *esp = psuthreadinfo.uctx.uc_mcontext.gregs[ESP];
-    //printf("ebp_lf %lu\n", ebp_last_frame);
-    //printf("ebp_lf_lf %lu\n", *ebp_last_frame);
     uint32_t *esp_last_frame = ebp+2;
     uint32_t  ret_addr = *(ebp+1);
     psuthreadinfo.restart_point = ret_addr;
     psuthreadinfo.restart_point_offset = psuthreadinfo.restart_point - fn_start_addr;
-    
-    psuthreadinfo.num_elements = 0;
-    psuthreadinfo.frame_index[0] = ebp_last_frame;//psuthreadinfo.num_blank_entries + ((unsigned long int)ebp_last_frame - (unsigned long int)esp_last_frame)/(STACK_WIDTH)+1;//fist ebp 
-    for (int k = 1; k < NUM_FRAMES; k++){
-        printf("ebp's last f %lu\n", (unsigned long int)ebp_last_frame);
-        ebp_last_frame = *ebp_last_frame; //getting previous frame's ebp
-        printf("ebp's new f%lu\n", (unsigned long int)ebp_last_frame);
-        psuthreadinfo.frame_index[k] = ebp_last_frame;//psuthreadinfo.num_blank_entries + ((unsigned long int)ebp_last_frame - (unsigned long int)esp_last_frame)/(STACK_WIDTH)+1; //index of next frame
-        }
-    
-        int k=0;
-        printf("esp %lu\n", (unsigned long int)*esp_last_frame);
-        for (i = 0; i < ((unsigned long int)ebp_last_frame-(unsigned long int)esp_last_frame)/(STACK_WIDTH)+1; i++)
-        {
-          psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries + i + psuthreadinfo.num_elements] = *(esp_last_frame+i);
-          printf("writing to %d value: %lu", psuthreadinfo.num_blank_entries + i + psuthreadinfo.num_elements, *(esp_last_frame+i));
-          if ((esp_last_frame+i) == psuthreadinfo.frame_index[k]){
-            printf("<--- bp %d\n",k);
-            psuthreadinfo.frame_index[k] = psuthreadinfo.num_blank_entries + i + psuthreadinfo.num_elements;
-            k++;
-          }
-          else{
-          printf("\n",k);
-          }
-        }
-        psuthreadinfo.num_elements += i-1;
-        //psuthreadinfo.frame_index[k] = psuthreadinfo.num_blank_entries + i;
-        /*for(i=0;i<NUM_FRAMES;i++){
-            printf("--%lu\n ", (unsigned long int)psuthreadinfo.frame_index[i]);
-            printf("%lu\n", (unsigned long int)psuthreadinfo.stack_raw_data[psuthreadinfo.frame_index[i]]);
-            
-        }*/
-    for (i = 0; i < 100; i++)
+	
+	//printf("Print the base pointers and their contents\n");
+	uint32_t bp_cur;
+	uint32_t bp_arr[MAX_RECURSION_DEPTH+2];
+	psuthreadinfo.num_frames = 0;
+	for (bp_cur = (uint32_t)ebp; bp_cur != base_pointer_create; bp_cur = *((uint32_t*)bp_cur)) {
+		//printf("Address: %zx has content: %zx\n", bp_cur, *((uint32_t*)bp_cur));
+		bp_arr[psuthreadinfo.num_frames++] = *((uint32_t*)bp_cur);
+	}
+	psuthreadinfo.num_frames -= 2;
+	//printf("Number of frames we are interested in: %d\n", psuthreadinfo.num_frames);
+	//printf("The bps that we are interested in: \n");
+	for (i = 0; i < psuthreadinfo.num_frames; i++) {
+		//printf("%zx\n", bp_arr[i]);
+		psuthreadinfo.base_pointer_positions[i] = psuthreadinfo.num_blank_entries + ((unsigned long int)bp_arr[i] - (unsigned long int)esp_last_frame)/STACK_WIDTH;
+	}
+	
+	uint32_t * ebp_deepest_frame = bp_arr[psuthreadinfo.num_frames-1];
+	//printf("The deepest frame's bp is: %zx\n", ebp_deepest_frame );
+
+    for (i = 0; i < ((unsigned long int)ebp_deepest_frame-(unsigned long int)esp_last_frame)/(STACK_WIDTH)+1; i++)
     {
-        psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries+psuthreadinfo.num_elements+2+i] = *(ebp_last_frame+2+i);
+        psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries+i] = *(esp_last_frame+i);
+        psuthreadinfo.num_elements = i;
+    }
+	//printf("Number of elements in stack: %d\n", psuthreadinfo.num_elements);
+	
+    for (i = 0; i < MAX_ARGS; i++)
+    {
+        psuthreadinfo.stack_raw_data[psuthreadinfo.num_blank_entries+psuthreadinfo.num_elements+1+i] = *(ebp_deepest_frame+1+i);
     }
 	
-	printf("Need to send: EAX: %zx\n", psuthreadinfo.uctx.uc_mcontext.gregs[EAX] );
+	//printf("The bp's accessed using array of bp positions:\n");
+	for (i = 0; i < psuthreadinfo.num_frames; i++) {
+		//printf("Index: %d, value: %zx\n", psuthreadinfo.base_pointer_positions[i], psuthreadinfo.stack_raw_data[psuthreadinfo.base_pointer_positions[i]]);
+	}
 	
 	// start a client right here. 
 	// using this, send the context
 	// store all info needed for that
-	printf("migration starting\n");
+	//printf("migration starting\n");
 	client(hostname); //sending uctx insinde of this function
 	
 	pthread_exit(&retval);
